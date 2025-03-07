@@ -8,14 +8,9 @@ from io import BytesIO
 app = Flask(__name__)
 
 DEFAULT_LOGO_URL = "https://i.postimg.cc/pTTvjx8r/Group-143.png"
-FONT_PATH = "Montserrat-Bold.ttf"
+FONT_PATH = "InterTight-Bold.ttf"  # Updated font path
 
 # Store images in memory for a short time:
-#  key: str (UUID)
-#  value: {
-#    "data": bytes,
-#    "expires_at": float (timestamp)
-#  }
 EPHEMERAL_STORE = {}
 
 # Lifetime in seconds
@@ -48,7 +43,7 @@ def wrap_text(draw, text, font, max_width):
 @app.route('/edit_image', methods=['POST'])
 def edit_image():
     """
-    1. Generate the edited image (same logic).
+    1. Generate the edited image with new dimensions (1080x1350).
     2. Store the result in EPHEMERAL_STORE with a UUID.
     3. Return a JSON object containing a temporary URL.
     """
@@ -62,42 +57,26 @@ def edit_image():
         # Download base image
         response = requests.get(image_url)
         img = Image.open(BytesIO(response.content)).convert("RGB")
-        img = img.resize((1080, 1080), Image.LANCZOS)
+        img = img.resize((1080, 1350), Image.LANCZOS)  # Updated size
 
         # Download and resize the logo
         logo_response = requests.get(logo_url)
         logo = Image.open(BytesIO(logo_response.content)).convert("RGBA")
         logo = logo.resize((185, 58), Image.LANCZOS)
 
-        # Create a vertical gradient for the bottom half
-        half_height = img.height // 2
-        gradient_col = Image.new('L', (1, half_height), 0)
-        for y in range(half_height):
-            alpha = int(230 * (y / float(half_height - 1)))
+        # Create a vertical gradient for the lower portion (adjusted for new height)
+        gradient_height = int(img.height * 0.6)  # Increased gradient coverage to 60% of height
+        gradient_col = Image.new('L', (1, gradient_height), 0)
+        for y in range(gradient_height):
+            alpha = int(230 * (y / float(gradient_height - 1)))
             gradient_col.putpixel((0, y), alpha)
-        gradient = gradient_col.resize((img.width, half_height))
+        gradient = gradient_col.resize((img.width, gradient_height))
 
-       
-
-        # # Apply gradient overlay
+        # Apply gradient overlay
         gradient_overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        black_rect = Image.new("RGBA", (img.width, half_height), (0, 0, 0, 255))
-        gradient_overlay.paste(black_rect, (0, img.height - half_height), gradient)
+        black_rect = Image.new("RGBA", (img.width, gradient_height), (0, 0, 0, 255))
+        gradient_overlay.paste(black_rect, (0, img.height - gradient_height), gradient)
         img = Image.alpha_composite(img.convert("RGBA"), gradient_overlay)
-
-
-        # Increase gradient height to 80% of the image height
-        # gradient_height = int(img.height * 0.8)
-
-        # # Create the gradient overlay
-        # gradient_overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        # black_rect = Image.new("RGBA", (img.width, gradient_height), (0, 0, 0, 255))
-        # gradient_overlay.paste(black_rect, (0, img.height - gradient_height), gradient)
-        
-        # # Apply the new gradient
-        # img = Image.alpha_composite(img.convert("RGBA"), gradient_overlay)
-
-        
 
         # Paste the logo - move to top left corner with padding
         logo_padding = 40
@@ -107,7 +86,7 @@ def edit_image():
 
         # Prepare and draw text
         draw = ImageDraw.Draw(img)
-        font_size = 72  # Increased font size
+        font_size = 80  # Increased font size for better readability
         font = ImageFont.truetype(FONT_PATH, font_size)
 
         max_text_width = int(img.width * 0.85)
@@ -115,9 +94,9 @@ def edit_image():
         line_height = draw.textbbox((0, 0), "Ay", font=font)[3]
         num_lines = len(lines)
 
-        # Position text in the bottom half of the image with left alignment
-        text_padding = 40
-        bottom_padding = 100
+        # Position text in the bottom section of the image with left alignment
+        text_padding = 50
+        bottom_padding = 120
         
         total_text_height = line_height * num_lines
         bottom_line_y = img.height - bottom_padding - total_text_height
@@ -141,8 +120,6 @@ def edit_image():
         }
 
         # Construct a temporary URL for retrieval
-        # e.g. https://your-railway-app.com/temp_image/<image_id>
-        # or if testing locally: http://127.0.0.1:10000/temp_image/<image_id>
         temp_url = request.host_url.rstrip("/") + "/temp_image/" + image_id
 
         return jsonify({
